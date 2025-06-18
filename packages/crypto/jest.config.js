@@ -1,11 +1,11 @@
 module.exports = {
     preset: 'ts-jest',
     testEnvironment: 'node',
-    roots: ['<rootDir>/src'],
-    testMatch: [
+    roots: ['<rootDir>/src'], testMatch: [
         '**/__tests__/**/*.+(ts|tsx|js)',
         '**/*.(test|spec).+(ts|tsx|js)'
-    ], testPathIgnorePatterns: [
+    ],
+    testPathIgnorePatterns: [
         '.*jest-setup\\.ts$'
     ],
     transform: {
@@ -15,7 +15,6 @@ module.exports = {
         'src/**/*.{ts,tsx}',
         '!src/**/*.d.ts',
         '!src/index.ts'
-    ],
-    coverageDirectory: 'coverage', coverageReporters: ['text', 'lcov', 'html'],
+    ], coverageDirectory: 'coverage',
     setupFilesAfterEnv: ['<rootDir>/src/__tests__/jest-setup.ts']
 };
