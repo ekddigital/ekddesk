@@ -13,30 +13,38 @@
         "bootstrap": "npm install && npm run build:shared",
         "build": "npm run build:packages && npm run build:apps",
         "build:packages": "npm run build:shared && npm run build:crypto && npm run build:network && npm run build:media && npm run build:platform && npm run build:ui",
-        "build:apps": "npm run build:signaling && npm run build:auth",
+        "build:apps": "npm run build:signaling && npm run build:auth && npm run build:desktop",
         "build:shared": "cd packages/shared && npm run build",
         "build:crypto": "cd packages/crypto && npm run build",
         "build:network": "cd packages/network && npm run build",
         "build:media": "cd packages/media && npm run build",
         "build:platform": "cd packages/platform && npm run build",
         "build:ui": "cd packages/ui-components && npm run build",
+        "build:desktop": "cd apps/desktop-client && npm run build",
         "build:signaling": "cd apps/signaling-server && npm run build",
         "build:auth": "cd apps/auth-service && npm run build",
+        "start:signaling": "cd apps/signaling-server && npm start",
+        "start:auth": "cd apps/auth-service && npm start",
+        "start:services": "concurrently \"npm run start:signaling\" \"npm run start:auth\"",
+        "demo": "ts-node integration-test.ts",
+        "demo:full": "npm run start:services & sleep 5 && npm run demo",
         "test": "jest",
         "test:coverage": "jest --coverage",
+        "test:integration": "npm run demo",
         "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
         "lint:fix": "npm run lint -- --fix",
         "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
         "typecheck": "tsc --noEmit",
         "dev:signaling": "cd apps/signaling-server && npm run dev",
         "dev:auth": "cd apps/auth-service && npm run dev",
-        "start:services": "concurrently \"npm run dev:signaling\" \"npm run dev:auth\"",
+        "dev:desktop": "cd apps/desktop-client && npm run dev",
+        "start:desktop": "cd apps/desktop-client && npm start",
         "clean": "rimraf packages/*/dist apps/*/dist services/*/dist",
         "prepare": "husky install"
     },
     "devDependencies": {
         "@types/jest": "^30.0.0",
-        "@types/node": "^20.10.0",
+        "@types/node": "^20.19.1",
         "@typescript-eslint/eslint-plugin": "^6.12.0",
         "@typescript-eslint/parser": "^6.12.0",
         "concurrently": "^8.2.0",
@@ -50,6 +58,7 @@
         "prettier": "^3.1.0",
         "rimraf": "^5.0.5",
         "ts-jest": "^29.4.0",
+        "ts-node": "^10.9.2",
         "typescript": "^5.3.0"
     },
     "engines": {
@@ -69,5 +78,8 @@
         "enterprise"
     ],
     "author": "EKD Desk Team",
-    "license": "MIT"
+    "license": "MIT",
+    "dependencies": {
+        "socket.io-client": "^4.8.1"
+    }
 }

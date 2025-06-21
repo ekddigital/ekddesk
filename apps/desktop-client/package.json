@@ -1,0 +1,71 @@
+{
+    "name": "@ekd-desk/desktop-client",
+    "version": "1.0.0",
+    "description": "EKD Desk Desktop Client - Electron App for Remote Desktop Control",
+    "main": "dist/main.js",
+    "author": "EKD Digital",
+    "license": "MIT",
+    "private": true,
+    "scripts": {
+        "build": "tsc && webpack --mode production",
+        "dev": "concurrently \"tsc --watch\" \"webpack --mode development --watch\" \"electron dist/main.js\"",
+        "start": "electron dist/main.js",
+        "pack": "electron-builder --dir",
+        "dist": "npm run build && electron-builder",
+        "clean": "rimraf dist build"
+    },
+    "dependencies": {
+        "@ekd-desk/shared": "file:../../packages/shared",
+        "@ekd-desk/crypto": "file:../../packages/crypto",
+        "@ekd-desk/network": "file:../../packages/network",
+        "@ekd-desk/media": "file:../../packages/media",
+        "@ekd-desk/platform": "file:../../packages/platform",
+        "@ekd-desk/ui-components": "file:../../packages/ui-components",
+        "electron-store": "^8.1.0",
+        "socket.io-client": "^4.7.0",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "@emotion/react": "^11.11.0",
+        "@emotion/styled": "^11.11.0",
+        "@mui/material": "^5.14.0",
+        "@mui/icons-material": "^5.14.0",
+        "framer-motion": "^10.16.0"
+    },
+    "devDependencies": {
+        "electron": "^27.0.0",
+        "electron-builder": "^24.0.0",
+        "@types/react": "^18.2.0",
+        "@types/react-dom": "^18.2.0",
+        "typescript": "^5.3.0",
+        "webpack": "^5.89.0",
+        "webpack-cli": "^5.1.0",
+        "html-webpack-plugin": "^5.5.0",
+        "ts-loader": "^9.5.0",
+        "css-loader": "^6.8.0",
+        "style-loader": "^3.3.0",
+        "concurrently": "^8.2.0"
+    },
+    "build": {
+        "appId": "com.ekddigital.ekd-desk",
+        "productName": "EKD Desk",
+        "directories": {
+            "output": "build"
+        },
+        "files": [
+            "dist/**/*",
+            "node_modules/**/*"
+        ],
+        "mac": {
+            "icon": "assets/icon.icns",
+            "category": "public.app-category.productivity"
+        },
+        "win": {
+            "icon": "assets/icon.ico",
+            "target": "nsis"
+        },
+        "linux": {
+            "icon": "assets/icon.png",
+            "target": "AppImage"
+        }
+    }
+}

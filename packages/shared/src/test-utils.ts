@@ -1,7 +1,7 @@
 // Shared Jest setup utilities following DRY principles
 // This file can be imported by any package's jest-setup.ts
 
-import { Logger } from "@ekd-desk/shared";
+import { Logger } from "./logger";
 
 // Mock console methods to reduce noise in tests
 const originalConsole = { ...console };
@@ -56,11 +56,17 @@ export const createAsyncMock = <T = any>(returnValue?: T, delay = 0) => {
 export const waitFor = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
-// Setup and teardown hooks
-beforeEach(() => {
-  setupTestEnvironment();
-});
+// Setup and teardown hooks for tests
+export const setupTestHooks = () => {
+  if (typeof beforeEach !== "undefined") {
+    beforeEach(() => {
+      setupTestEnvironment();
+    });
+  }
 
-afterEach(() => {
-  teardownTestEnvironment();
-});
+  if (typeof afterEach !== "undefined") {
+    afterEach(() => {
+      teardownTestEnvironment();
+    });
+  }
+};
