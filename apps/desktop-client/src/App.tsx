@@ -263,7 +263,7 @@ const App: React.FC = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box display="flex" flexDirection="column" minHeight="100vh">
+      <Box display="flex" flexDirection="column" height="100vh">
         {/* Custom title bar (macOS) */}
         <AppBar
           position="static"
@@ -342,7 +342,7 @@ const App: React.FC = () => {
         </Drawer>
 
         {/* Main Content */}
-        <Box component="main" sx={{ flex: 1, overflow: "hidden" }}>
+        <Box component="main" sx={{ flex: 1, overflow: "auto", minHeight: 0 }}>
           <AnimatePresence mode="wait">
             <motion.div
               key={currentView}
@@ -350,7 +350,7 @@ const App: React.FC = () => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.2 }}
-              style={{ height: "100%" }}
+              style={{ height: "100%", overflow: "auto" }}
             >
               {renderCurrentView()}
             </motion.div>
