@@ -35,6 +35,8 @@ class BrowserEventEmitter {
 
 import { apiService } from "./api.service";
 import { deviceManager, DeviceInfo } from "./device.service";
+import { webRTCService } from "./webrtc.service";
+import { env } from "../config/environment";
 
 /**
  * Remote Desktop Service - Simplified for Renderer Process
@@ -91,16 +93,30 @@ export class RemoteDesktopService extends BrowserEventEmitter {
       this.currentConfig = config;
       this.isHosting = true;
 
-      // Use Electron IPC to communicate with main process for actual hosting
-      // TODO: Implement IPC communication when ready
-      const result = {
-        deviceId: deviceInfo.deviceId,
-        connectionCode: "DEV123",
+      // Initialize WebRTC signalling (Socket.IO)
+      const signalingUrl = env.getSignalingServerUrl();
+      await webRTCService.initializeSignalling(signalingUrl);
+
+      // Test screen capture first
+      await webRTCService.testScreenCapture();
+
+      // Start hosting with WebRTC
+      const hostingInfo = await webRTCService.startHosting();
+
+      this.emit("hosting-started", {
+        deviceId: hostingInfo.deviceId,
+        accessCode: hostingInfo.accessCode,
+        config,
+      });
+
+      console.log(
+        `Started hosting: ${hostingInfo.deviceId} / ${hostingInfo.accessCode}`
+      );
+
+      return {
+        deviceId: hostingInfo.deviceId,
+        connectionCode: hostingInfo.accessCode,
       };
-
-      this.emit("hosting-started", { deviceId: deviceInfo.deviceId, config });
-
-      return result;
     } catch (error) {
       this.emit("error", { type: "hosting-start-failed", error });
       throw error;
@@ -139,10 +155,27 @@ export class RemoteDesktopService extends BrowserEventEmitter {
     connectionCode?: string
   ): Promise<ConnectionInfo> {
     try {
+      console.log(`Attempting to connect to device: ${deviceId}`);
+
+      // First, validate device credentials with backend
+      const response = await apiService.login({
+        deviceId: deviceId,
+        password: connectionCode || "",
+      });
+      if (!response.success) {
+        throw new Error(response.message || "Invalid device credentials");
+      }
+
+      // Initialize WebRTC signalling (Socket.IO)
+      const signalingUrl = env.getSignalingServerUrl();
+      await webRTCService.initializeSignalling(signalingUrl);
+
+      // Connect to host using WebRTC
+      await webRTCService.connectToHost(deviceId, connectionCode || "");
+
       this.isConnected = true;
 
-      // Use Electron IPC for connection
-      // TODO: Implement IPC communication when ready
+      // Create connection info
       const connectionInfo: ConnectionInfo = {
         id: `conn_${Date.now()}`,
         connectionId: `conn_${Date.now()}`,
@@ -150,7 +183,7 @@ export class RemoteDesktopService extends BrowserEventEmitter {
         peerDeviceId: deviceId,
         deviceId: deviceId,
         deviceName: `Device-${deviceId.slice(0, 8)}`,
-        status: "connected" as const,
+        status: "connecting" as const,
         quality: "high",
         startTime: new Date(),
         bytesTransferred: 0,
@@ -159,9 +192,21 @@ export class RemoteDesktopService extends BrowserEventEmitter {
       this.activeConnections.set(connectionInfo.connectionId, connectionInfo);
       this.emit("connection-established", { connection: connectionInfo });
 
+      // Wait for WebRTC connection to establish
+      setTimeout(() => {
+        connectionInfo.status = "connected";
+        this.emit("connection-established", { connection: connectionInfo });
+        console.log(`Successfully connected to device: ${deviceId}`);
+      }, 3000);
+
       return connectionInfo;
     } catch (error) {
-      this.emit("error", { type: "connection-failed", error });
+      console.error(`Failed to connect to device ${deviceId}:`, error);
+      this.emit("error", {
+        code: "CONNECTION_FAILED",
+        message: error instanceof Error ? error.message : "Connection failed",
+        details: { deviceId },
+      });
       throw error;
     }
   }
@@ -211,12 +256,13 @@ export class RemoteDesktopService extends BrowserEventEmitter {
     inputData: any
   ): Promise<void> {
     try {
-      // Get the active connection (simplified for now)
-      const activeConnection = Array.from(this.activeConnections.values())[0];
-      const connectionId = activeConnection?.connectionId || "default";
+      // Send input via WebRTC data channel
+      webRTCService.sendRemoteInput({
+        type: inputType,
+        data: inputData,
+        timestamp: Date.now(),
+      });
 
-      // TODO: Implement IPC communication when ready
-      // await window.electronAPI?.remoteDesktop?.sendInput?.(connectionId, inputType, inputData);
       this.emit("remote-input", { type: inputType, data: inputData });
     } catch (error) {
       this.emit("error", {

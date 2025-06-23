@@ -144,6 +144,20 @@ export class AuthenticationController {
       "/devices/:deviceId/password",
       this.setPermanentPassword.bind(this)
     );
+
+    // Admin endpoints for user/device management
+    this.router.get("/admin/users", this.getAllUsers.bind(this));
+    this.router.get("/admin/devices", this.getAllDevices.bind(this));
+    this.router.delete("/admin/users/:userId", this.deleteUser.bind(this));
+    this.router.delete(
+      "/admin/devices/:deviceId",
+      this.deleteDevice.bind(this)
+    );
+    this.router.put(
+      "/admin/users/:userId/role",
+      this.updateUserRole.bind(this)
+    );
+    this.router.get("/admin/stats", this.getSystemStats.bind(this));
   }
 
   /**
@@ -779,6 +793,203 @@ export class AuthenticationController {
   private isValidDeviceId(deviceId: string): boolean {
     const deviceIdRegex = /^[A-Z0-9]{10}$/;
     return deviceIdRegex.test(deviceId);
+  }
+
+  /**
+   * Get all users (admin only)
+   */
+  public async getAllUsers(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      // TODO: Add admin role verification middleware
+      const users = await this.dbService.getAllUsers();
+
+      // Remove sensitive information
+      const sanitizedUsers = users.map((user: any) => ({
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      }));
+
+      res.json({
+        success: true,
+        data: {
+          users: sanitizedUsers,
+          count: sanitizedUsers.length,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get all devices (admin only)
+   */
+  public async getAllDevices(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      // TODO: Add admin role verification middleware
+      const devices = await this.dbService.getAllDevices();
+
+      // Remove sensitive information
+      const sanitizedDevices = devices.map((device: any) => ({
+        id: device.id,
+        deviceId: device.id,
+        deviceName: device.name,
+        deviceType: device.type,
+        platform: device.platform,
+        isActive: device.isActive,
+        lastLogin: device.lastLoginAt,
+        createdAt: device.registeredAt,
+      }));
+
+      res.json({
+        success: true,
+        data: {
+          devices: sanitizedDevices,
+          count: sanitizedDevices.length,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Delete a user (admin only)
+   */
+  public async deleteUser(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      // TODO: Add admin role verification middleware
+      const { userId } = req.params;
+
+      if (!userId) {
+        throw new ValidationError("User ID is required");
+      }
+
+      await this.dbService.deleteUser(userId);
+
+      res.json({
+        success: true,
+        message: "User deleted successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Delete a device (admin only)
+   */
+  public async deleteDevice(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      // TODO: Add admin role verification middleware
+      const { deviceId } = req.params;
+
+      if (!deviceId || !this.isValidDeviceId(deviceId)) {
+        throw new ValidationError("Valid device ID is required");
+      }
+
+      await this.dbService.deleteDevice(deviceId);
+
+      res.json({
+        success: true,
+        message: "Device deleted successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Update user role (admin only)
+   */
+  public async updateUserRole(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      // TODO: Add admin role verification middleware
+      const { userId } = req.params;
+      const { role } = req.body;
+
+      if (!userId) {
+        throw new ValidationError("User ID is required");
+      }
+
+      if (!["USER", "ADMIN", "SUPER_ADMIN"].includes(role)) {
+        throw new ValidationError(
+          "Invalid role. Must be USER, ADMIN, or SUPER_ADMIN"
+        );
+      }
+
+      await this.dbService.updateUserRole(userId, role);
+
+      res.json({
+        success: true,
+        message: "User role updated successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get system statistics (admin only)
+   */
+  public async getSystemStats(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      // TODO: Add admin role verification middleware
+      const [userCount, deviceCount, totalLogins] = await Promise.all([
+        this.dbService.getUserCount(),
+        this.dbService.getDeviceCount(),
+        this.dbService.getTotalLoginCount(),
+      ]);
+
+      res.json({
+        success: true,
+        data: {
+          users: {
+            total: userCount,
+            active: userCount, // TODO: Add active user calculation
+          },
+          devices: {
+            total: deviceCount,
+            active: deviceCount, // TODO: Add active device calculation
+          },
+          activity: {
+            totalLogins: totalLogins,
+            recentLogins: 0, // TODO: Add recent login calculation
+          },
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 
   public getRouter(): Router {

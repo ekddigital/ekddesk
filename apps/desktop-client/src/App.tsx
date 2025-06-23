@@ -36,6 +36,7 @@ import HomeView from "./components/HomeView";
 import HostView from "./components/HostView";
 import ConnectView from "./components/ConnectView";
 import SettingsView from "./components/SettingsView";
+import AboutView from "./components/AboutView";
 import LoginView from "./components/LoginView";
 import StatusBar from "./components/StatusBar";
 import NotificationCenter from "./components/NotificationCenter";
@@ -57,7 +58,7 @@ declare global {
   }
 }
 
-type ViewType = "login" | "home" | "host" | "connect" | "settings";
+type ViewType = "login" | "home" | "host" | "connect" | "settings" | "about";
 
 /**
  * Main App Component for EKD Desk Desktop Client
@@ -269,6 +270,7 @@ const App: React.FC = () => {
     { id: "host", label: "Host Session", icon: ShareIcon },
     { id: "connect", label: "Connect", icon: ComputerIcon },
     { id: "settings", label: "Settings", icon: SettingsIcon },
+    { id: "about", label: "About EKD Digital", icon: InfoIcon },
   ];
 
   // Render current view
@@ -301,6 +303,8 @@ const App: React.FC = () => {
             onBack={() => setCurrentView("home")}
           />
         );
+      case "about":
+        return <AboutView onBack={() => setCurrentView("home")} />;
       default:
         return (
           <HomeView
@@ -359,6 +363,13 @@ const App: React.FC = () => {
 
             <Typography variant="h6" sx={{ ml: 1, flex: 1, fontSize: "14px" }}>
               EKD Desk
+              <Typography
+                component="span"
+                variant="caption"
+                sx={{ ml: 1, opacity: 0.7, fontSize: "11px" }}
+              >
+                by EKD Digital
+              </Typography>
             </Typography>
 
             {isAuthenticated && (

@@ -18,6 +18,7 @@ import {
   Lock as LockIcon,
   Email as EmailIcon,
 } from "@mui/icons-material";
+import { env } from "../config/environment";
 import { motion } from "framer-motion";
 
 interface LoginViewProps {
@@ -83,7 +84,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBack }) => {
     try {
       // Make API call to login endpoint
       const response = await fetch(
-        "http://localhost:3001/api/auth/login-user",
+        `${env.getApiBaseUrl()}/api/auth/login-user`,
         {
           method: "POST",
           headers: {
@@ -147,7 +148,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBack }) => {
     try {
       // Make API call to register endpoint
       const response = await fetch(
-        "http://localhost:3001/api/auth/register-user",
+        `${env.getApiBaseUrl()}/api/auth/register-user`,
         {
           method: "POST",
           headers: {
@@ -191,7 +192,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBack }) => {
     try {
       // First try to register a test user, then login
       const registerResponse = await fetch(
-        "http://localhost:3001/api/auth/register-user",
+        `${env.getApiBaseUrl()}/api/auth/register-user`,
         {
           method: "POST",
           headers: {
@@ -208,7 +209,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBack }) => {
 
       // Ignore if user already exists, proceed to login
       const loginResponse = await fetch(
-        "http://localhost:3001/api/auth/login-user",
+        `${env.getApiBaseUrl()}/api/auth/login-user`,
         {
           method: "POST",
           headers: {
@@ -269,8 +270,15 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBack }) => {
             <Typography variant="h4" component="h1" gutterBottom>
               Welcome to EKD Desk
             </Typography>
-            <Typography variant="body1" color="text.secondary">
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 1 }}>
               Please login or create an account to continue
+            </Typography>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ opacity: 0.8 }}
+            >
+              by EKD Digital - Innovative Digital Solutions
             </Typography>
           </Box>
 

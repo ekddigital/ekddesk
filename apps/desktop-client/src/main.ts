@@ -306,10 +306,8 @@ class EKDDeskApp {
       }
     });
 
-    // Request permissions on macOS
-    if (process.platform === "darwin") {
-      this.requestMacOSPermissions();
-    }
+    // Note: We'll request permissions when actually needed (during hosting/connecting)
+    // instead of on startup to provide better UX
   }
 
   /**
@@ -410,7 +408,7 @@ class EKDDeskApp {
 
     // Permissions
     ipcMain.handle("permissions:request-screen", async () => {
-      return await this.requestMacOSPermissions();
+      return await this.requestScreenRecordingPermission();
     });
 
     ipcMain.handle("permissions:request-input", async () => {
@@ -656,6 +654,66 @@ class EKDDeskApp {
     ]);
 
     this.tray.setContextMenu(contextMenu);
+  }
+
+  /**
+   * Request screen recording permission by attempting to access the screen
+   */
+  private async requestScreenRecordingPermission(): Promise<boolean> {
+    if (process.platform !== "darwin") return true;
+
+    try {
+      this.logger.info("Requesting screen recording permission...");
+
+      // Check current status first
+      const currentStatus = systemPreferences.getMediaAccessStatus("screen");
+      if (currentStatus === "granted") {
+        this.logger.info("Screen recording permission already granted");
+        return true;
+      }
+
+      // Attempt to trigger permission dialog by requesting screen sources
+      // This will trigger the macOS permission dialog
+      const sources = await this.captureService.getScreenSources();
+
+      // Check again after the attempt
+      const newStatus = systemPreferences.getMediaAccessStatus("screen");
+      const hasPermission = newStatus === "granted";
+
+      if (hasPermission) {
+        this.logger.info("Screen recording permission granted");
+      } else {
+        this.logger.warn("Screen recording permission not granted");
+
+        // Show user-friendly dialog
+        await dialog
+          .showMessageBox({
+            type: "warning",
+            title: "Screen Recording Permission Required",
+            message:
+              "EKD Desk needs permission to record your screen for remote desktop sharing.",
+            detail:
+              "Please go to System Preferences > Security & Privacy > Privacy > Screen Recording and enable access for EKD Desk, then restart the app.",
+            buttons: ["OK", "Open System Preferences"],
+            defaultId: 1,
+          })
+          .then((result) => {
+            if (result.response === 1) {
+              // Open System Preferences to Privacy settings
+              require("child_process").exec(
+                'open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"'
+              );
+            }
+          });
+      }
+
+      return hasPermission;
+    } catch (error) {
+      this.logger.error("Failed to request screen recording permission", {
+        error,
+      });
+      return false;
+    }
   }
 
   /**

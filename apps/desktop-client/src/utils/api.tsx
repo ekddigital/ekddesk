@@ -8,6 +8,7 @@ import {
   CircularProgress,
   Snackbar,
 } from "@mui/material";
+import { env } from "../config/environment";
 
 interface ApiResponse<T = any> {
   success: boolean;
@@ -70,8 +71,7 @@ export function useApi<T = any>(
 
 // API service class
 export class ApiService {
-  private static baseUrl =
-    process.env.REACT_APP_API_URL || "http://localhost:3001";
+  private static baseUrl = env.getApiBaseUrl();
 
   private static async request<T>(
     endpoint: string,
@@ -140,6 +140,64 @@ export class ApiService {
     return this.request("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ deviceId, password }),
+    });
+  }
+
+  // User authentication
+  static async registerUser(userData: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+  }) {
+    return this.request("/api/auth/register-user", {
+      method: "POST",
+      body: JSON.stringify(userData),
+    });
+  }
+
+  static async loginUser(email: string, password: string) {
+    return this.request("/api/auth/login-user", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+  }
+
+  // Admin endpoints
+  static async getAllUsers() {
+    return this.request("/api/auth/admin/users", {
+      method: "GET",
+    });
+  }
+
+  static async getAllDevices() {
+    return this.request("/api/auth/admin/devices", {
+      method: "GET",
+    });
+  }
+
+  static async deleteUser(userId: string) {
+    return this.request(`/api/auth/admin/users/${userId}`, {
+      method: "DELETE",
+    });
+  }
+
+  static async deleteDevice(deviceId: string) {
+    return this.request(`/api/auth/admin/devices/${deviceId}`, {
+      method: "DELETE",
+    });
+  }
+
+  static async updateUserRole(userId: string, role: string) {
+    return this.request(`/api/auth/admin/users/${userId}/role`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    });
+  }
+
+  static async getSystemStats() {
+    return this.request("/api/auth/admin/stats", {
+      method: "GET",
     });
   }
 }

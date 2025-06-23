@@ -462,9 +462,57 @@ export class DatabaseService {
     deviceId: string,
     password: string
   ): Promise<boolean> {
-    const result = await this.verifyDeviceCredentials("", password);
-    // This is a simplified implementation - in practice you'd want to check by deviceId
-    return result.isValid;
+    // Get device by ID
+    const device = await this.prisma.device.findUnique({
+      where: { id: deviceId },
+    });
+
+    if (!device) {
+      return false;
+    }
+
+    // Check device password hash first
+    if (device.passwordHash) {
+      const isValid = await bcrypt.compare(password, device.passwordHash);
+      if (isValid) {
+        return true;
+      }
+    }
+
+    // Check permanent credentials
+    const permanentCredentials = await this.prisma.deviceCredential.findMany({
+      where: {
+        deviceId: device.id,
+        type: CredentialType.PERMANENT,
+      },
+    });
+
+    for (const credential of permanentCredentials) {
+      const isValid = await bcrypt.compare(password, credential.passwordHash);
+      if (isValid) {
+        return true;
+      }
+    }
+
+    // Check temporary credentials
+    const tempCredentials = await this.prisma.deviceCredential.findMany({
+      where: {
+        deviceId: device.id,
+        type: CredentialType.TEMPORARY,
+        expiresAt: {
+          gt: new Date(), // Only check non-expired credentials
+        },
+      },
+    });
+
+    for (const credential of tempCredentials) {
+      const isValid = await bcrypt.compare(password, credential.passwordHash);
+      if (isValid) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
@@ -542,6 +590,102 @@ export class DatabaseService {
       where: { id: userId },
       data: { lastLoginAt: new Date() },
     });
+  }
+
+  /**
+   * Get all users (admin only)
+   */
+  public async getAllUsers(): Promise<any[]> {
+    return await this.prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+        lastLoginAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  /**
+   * Get all devices (admin only)
+   */
+  public async getAllDevices(): Promise<any[]> {
+    return await this.prisma.device.findMany({
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        platform: true,
+        isActive: true,
+        lastLoginAt: true,
+        registeredAt: true,
+      },
+      orderBy: { registeredAt: "desc" },
+    });
+  }
+
+  /**
+   * Delete a user (admin only)
+   */
+  public async deleteUser(userId: string): Promise<void> {
+    await this.prisma.user.delete({
+      where: { id: userId },
+    });
+  }
+
+  /**
+   * Delete a device (admin only)
+   */
+  public async deleteDevice(deviceId: string): Promise<void> {
+    // Delete related credentials first
+    await this.prisma.deviceCredential.deleteMany({
+      where: { deviceId },
+    });
+
+    // Then delete the device
+    await this.prisma.device.delete({
+      where: { id: deviceId },
+    });
+  }
+
+  /**
+   * Update user role (admin only)
+   */
+  public async updateUserRole(userId: string, role: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { role: role as any }, // Role validation handled at controller level
+    });
+  }
+
+  /**
+   * Get total user count
+   */
+  public async getUserCount(): Promise<number> {
+    return await this.prisma.user.count();
+  }
+
+  /**
+   * Get total device count
+   */
+  public async getDeviceCount(): Promise<number> {
+    return await this.prisma.device.count();
+  }
+
+  /**
+   * Get total login count (simplified)
+   */
+  public async getTotalLoginCount(): Promise<number> {
+    // For now, return the sum of users and devices as a proxy
+    // TODO: Implement proper login tracking in the future
+    const userCount = await this.getUserCount();
+    const deviceCount = await this.getDeviceCount();
+    return userCount + deviceCount;
   }
 
   /**

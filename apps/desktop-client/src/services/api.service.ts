@@ -2,6 +2,7 @@
  * EKD Desk API Service
  * Handles communication with the auth service backend
  */
+import { env } from "../config/environment";
 
 export interface DeviceRegistrationRequest {
   deviceId: string;
@@ -63,7 +64,7 @@ export class ApiService {
   private deviceToken?: string;
   private accessToken?: string;
 
-  constructor(baseUrl: string = "http://localhost:3001") {
+  constructor(baseUrl: string = env.getApiBaseUrl()) {
     this.baseUrl = baseUrl;
   }
 

@@ -50,8 +50,16 @@ const HomeView: React.FC<HomeViewProps> = ({
           <Typography variant="h4" component="h1" gutterBottom>
             Welcome to EKD Desk
           </Typography>
-          <Typography variant="body1" color="text.secondary">
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 1 }}>
             Secure, fast, and reliable remote desktop control
+          </Typography>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ opacity: 0.8 }}
+          >
+            Powered by EKD Digital - Transforming businesses through innovative
+            digital solutions
           </Typography>
         </Box>
 

@@ -23,6 +23,7 @@ import {
 } from "@mui/icons-material";
 import { apiService } from "../services/api.service";
 import { remoteDesktopService } from "../services/remote-desktop.service";
+import { enhancedRemoteDesktopService } from "../services/enhanced-remote-desktop.service";
 import type { ConnectionInfo } from "../services/remote-desktop.service";
 
 interface ConnectViewProps {
@@ -50,6 +51,18 @@ const ConnectView: React.FC<ConnectViewProps> = ({ onBack }) => {
       );
       setError("");
       setLoading(false);
+
+      // Try to get the video stream after connection
+      setTimeout(() => {
+        const videoElement = document.getElementById(
+          "remote-video"
+        ) as HTMLVideoElement;
+        if (videoElement && !videoElement.srcObject) {
+          console.log(
+            "No video stream detected, this might be a self-connection test"
+          );
+        }
+      }, 1000);
     };
 
     const handleConnectionLost = (data: {
@@ -150,14 +163,18 @@ const ConnectView: React.FC<ConnectViewProps> = ({ onBack }) => {
   };
 
   const handleMouseMove = async (
-    event: React.MouseEvent<HTMLCanvasElement>
+    event: React.MouseEvent<HTMLCanvasElement | HTMLVideoElement>
   ) => {
     if (!isConnected) return;
 
-    const canvas = event.currentTarget;
-    const rect = canvas.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
-    const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+    const element = event.currentTarget;
+    const rect = element.getBoundingClientRect();
+    const x =
+      ((event.clientX - rect.left) / rect.width) *
+      (element instanceof HTMLCanvasElement ? element.width : rect.width);
+    const y =
+      ((event.clientY - rect.top) / rect.height) *
+      (element instanceof HTMLCanvasElement ? element.height : rect.height);
 
     try {
       await remoteDesktopService.sendRemoteInput("mouse", {
@@ -172,14 +189,18 @@ const ConnectView: React.FC<ConnectViewProps> = ({ onBack }) => {
   };
 
   const handleMouseDown = async (
-    event: React.MouseEvent<HTMLCanvasElement>
+    event: React.MouseEvent<HTMLCanvasElement | HTMLVideoElement>
   ) => {
     if (!isConnected) return;
 
-    const canvas = event.currentTarget;
-    const rect = canvas.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
-    const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+    const element = event.currentTarget;
+    const rect = element.getBoundingClientRect();
+    const x =
+      ((event.clientX - rect.left) / rect.width) *
+      (element instanceof HTMLCanvasElement ? element.width : rect.width);
+    const y =
+      ((event.clientY - rect.top) / rect.height) *
+      (element instanceof HTMLCanvasElement ? element.height : rect.height);
 
     try {
       await remoteDesktopService.sendRemoteInput("mouse", {
@@ -193,13 +214,19 @@ const ConnectView: React.FC<ConnectViewProps> = ({ onBack }) => {
     }
   };
 
-  const handleMouseUp = async (event: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleMouseUp = async (
+    event: React.MouseEvent<HTMLCanvasElement | HTMLVideoElement>
+  ) => {
     if (!isConnected) return;
 
-    const canvas = event.currentTarget;
-    const rect = canvas.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
-    const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+    const element = event.currentTarget;
+    const rect = element.getBoundingClientRect();
+    const x =
+      ((event.clientX - rect.left) / rect.width) *
+      (element instanceof HTMLCanvasElement ? element.width : rect.width);
+    const y =
+      ((event.clientY - rect.top) / rect.height) *
+      (element instanceof HTMLCanvasElement ? element.height : rect.height);
 
     try {
       await remoteDesktopService.sendRemoteInput("mouse", {
@@ -214,7 +241,7 @@ const ConnectView: React.FC<ConnectViewProps> = ({ onBack }) => {
   };
 
   const handleKeyDown = async (
-    event: React.KeyboardEvent<HTMLCanvasElement>
+    event: React.KeyboardEvent<HTMLCanvasElement | HTMLVideoElement>
   ) => {
     if (!isConnected) return;
 
@@ -235,7 +262,9 @@ const ConnectView: React.FC<ConnectViewProps> = ({ onBack }) => {
     }
   };
 
-  const handleKeyUp = async (event: React.KeyboardEvent<HTMLCanvasElement>) => {
+  const handleKeyUp = async (
+    event: React.KeyboardEvent<HTMLCanvasElement | HTMLVideoElement>
+  ) => {
     if (!isConnected) return;
 
     event.preventDefault();
@@ -386,13 +415,17 @@ const ConnectView: React.FC<ConnectViewProps> = ({ onBack }) => {
                   overflow: "hidden",
                 }}
               >
-                <canvas
-                  id="remote-canvas"
+                {/* Remote video element for WebRTC stream */}
+                <video
+                  id="remote-video"
+                  autoPlay
+                  playsInline
                   style={{
-                    maxWidth: "100%",
-                    maxHeight: "100%",
+                    width: "100%",
+                    height: "100%",
                     objectFit: "contain",
                     cursor: "crosshair",
+                    display: connection ? "block" : "none",
                   }}
                   onMouseMove={handleMouseMove}
                   onMouseDown={handleMouseDown}
@@ -401,6 +434,28 @@ const ConnectView: React.FC<ConnectViewProps> = ({ onBack }) => {
                   onKeyUp={handleKeyUp}
                   tabIndex={0}
                 />
+
+                {/* Fallback canvas for non-WebRTC streams */}
+                <canvas
+                  id="remote-canvas"
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                    objectFit: "contain",
+                    cursor: "crosshair",
+                    display:
+                      connection && !document.getElementById("remote-video")
+                        ? "block"
+                        : "none",
+                  }}
+                  onMouseMove={handleMouseMove}
+                  onMouseDown={handleMouseDown}
+                  onMouseUp={handleMouseUp}
+                  onKeyDown={handleKeyDown}
+                  onKeyUp={handleKeyUp}
+                  tabIndex={0}
+                />
+
                 {!connection && (
                   <Box sx={{ position: "absolute", textAlign: "center" }}>
                     <Typography variant="body1" color="text.secondary">
