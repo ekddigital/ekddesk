@@ -2,14 +2,14 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import { config } from "./config/config";
 import { Logger } from "@ekd-desk/shared";
 import { AuthenticationController } from "./controllers/auth.controller";
 import { SessionController } from "./controllers/session.controller";
-import { DatabaseService } from "./services/database.service";
+import { DatabaseService } from "./services/database.service.simple";
 import { RedisService } from "./services/redis.service";
 import { errorHandler } from "./middleware/error.middleware";
 import { requestLogger } from "./middleware/logger.middleware";
+import { config } from "./config/config";
 
 /**
  * EKD Desk Authentication Service
@@ -20,6 +20,7 @@ class AuthService {
   private logger: Logger;
   private dbService: DatabaseService;
   private redisService: RedisService;
+  private cleanupInterval?: NodeJS.Timeout;
 
   constructor() {
     this.app = express();
@@ -132,20 +133,20 @@ class AuthService {
 
   public async initialize(): Promise<void> {
     try {
-      // Skip database initialization in development for now
-      if (config.env !== "development") {
-        // Initialize database connection
-        await this.dbService.initialize();
-        this.logger.info("Database connection established");
+      // Initialize database connection
+      await this.dbService.initialize();
+      this.logger.info("Database connection established");
 
-        // Initialize Redis connection
+      // Initialize Redis connection (optional in development)
+      if (config.env !== "development") {
         await this.redisService.initialize();
         this.logger.info("Redis connection established");
       } else {
-        this.logger.warn(
-          "Running in development mode - database and Redis connections skipped"
-        );
+        this.logger.info("Skipping Redis connection in development mode");
       }
+
+      // Start credential cleanup job
+      this.startCleanupJob();
 
       this.logger.info("Auth service initialized successfully");
     } catch (error) {
@@ -170,6 +171,30 @@ class AuthService {
   public getApp(): express.Application {
     return this.app;
   }
+
+  private startCleanupJob(): void {
+    // Clear any existing interval
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
+
+    // Start new cleanup interval
+    this.cleanupInterval = setInterval(async () => {
+      try {
+        const removed = await this.dbService.cleanupExpiredCredentials();
+        console.log(`🔄 Cleaned up ${removed} expired credentials`);
+      } catch (err) {
+        console.error("Error during credential cleanup", err);
+      }
+    }, config.session.credentialCleanupInterval);
+  }
+
+  private stopCleanupJob(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = undefined;
+    }
+  }
 }
 
 // Start the service
@@ -179,16 +204,19 @@ async function startService() {
     await authService.initialize();
     authService.start();
 
-    // Graceful shutdown
-    process.on("SIGTERM", () => {
+    // Handle graceful shutdown - only set up listeners once
+    const gracefulShutdown = () => {
       console.log("SIGTERM received, shutting down gracefully");
       process.exit(0);
-    });
+    };
 
-    process.on("SIGINT", () => {
-      console.log("SIGINT received, shutting down gracefully");
-      process.exit(0);
-    });
+    // Remove existing listeners first to prevent duplicates
+    process.removeAllListeners("SIGTERM");
+    process.removeAllListeners("SIGINT");
+
+    // Add new listeners
+    process.on("SIGTERM", gracefulShutdown);
+    process.on("SIGINT", gracefulShutdown);
   } catch (error) {
     console.error("Failed to start auth service:", error);
     process.exit(1);

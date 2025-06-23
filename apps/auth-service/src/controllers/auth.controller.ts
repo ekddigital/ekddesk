@@ -4,8 +4,9 @@ import jwt from "jsonwebtoken";
 import Joi from "joi";
 import { Logger } from "@ekd-desk/shared";
 import { AuthenticationService } from "@ekd-desk/crypto";
+import { DeviceType } from "@prisma/client";
 import { config } from "../config/config";
-import { DatabaseService } from "../services/database.service";
+import { DatabaseService } from "../services/database.service.simple";
 import { RedisService } from "../services/redis.service";
 import {
   AuthenticationError,
@@ -50,16 +51,24 @@ export class AuthenticationController {
 
   // Validation schemas
   private registerSchema = Joi.object({
-    deviceId: Joi.string().uuid().required(),
+    deviceId: Joi.string()
+      .length(10)
+      .pattern(/^[A-Z0-9]+$/)
+      .required(),
     deviceName: Joi.string().min(1).max(255).required(),
-    deviceType: Joi.string().valid("desktop", "mobile", "web").required(),
+    deviceType: Joi.string()
+      .valid("desktop", "mobile", "web", "DESKTOP", "MOBILE", "WEB")
+      .required(),
     platform: Joi.string().min(1).max(255).required(),
     publicKey: Joi.string().required(),
     password: Joi.string().min(8).max(128).optional(),
   });
 
   private loginSchema = Joi.object({
-    deviceId: Joi.string().uuid().required(),
+    deviceId: Joi.string()
+      .length(10)
+      .pattern(/^[A-Z0-9]+$/)
+      .required(),
     password: Joi.string().max(128).optional(),
     privateKey: Joi.string().optional(),
     challenge: Joi.string().optional(),
@@ -68,6 +77,19 @@ export class AuthenticationController {
   private refreshSchema = Joi.object({
     refreshToken: Joi.string().required(),
   });
+
+  private userRegisterSchema = Joi.object({
+    email: Joi.string().email().required(),
+    password: Joi.string().min(6).required(),
+    firstName: Joi.string().min(1).max(50).required(),
+    lastName: Joi.string().min(1).max(50).required(),
+  });
+
+  private userLoginSchema = Joi.object({
+    email: Joi.string().email().required(),
+    password: Joi.string().required(),
+  });
+
   constructor(dbService: DatabaseService, redisService: RedisService) {
     this.router = Router();
     this.logger = Logger.createLogger("AuthController");
@@ -80,13 +102,48 @@ export class AuthenticationController {
     this.initializeRoutes();
   }
 
+  /**
+   * Normalize device type string to valid DeviceType enum
+   */
+  private normalizeDeviceType(deviceType: string): DeviceType {
+    const normalized = deviceType.toUpperCase();
+
+    switch (normalized) {
+      case "DESKTOP":
+        return DeviceType.DESKTOP;
+      case "MOBILE":
+        return DeviceType.MOBILE;
+      case "WEB":
+        return DeviceType.WEB;
+      default:
+        throw new ValidationError(
+          `Invalid device type: ${deviceType}. Must be one of: desktop, mobile, web`
+        );
+    }
+  }
+
   private initializeRoutes(): void {
+    // Device authentication routes
     this.router.post("/register", this.register.bind(this));
     this.router.post("/login", this.login.bind(this));
     this.router.post("/logout", this.logout.bind(this));
     this.router.post("/refresh", this.refreshToken.bind(this));
     this.router.post("/revoke", this.revokeAccess.bind(this));
     this.router.get("/challenge/:deviceId", this.getChallenge.bind(this));
+
+    // User authentication routes
+    this.router.post("/register-user", this.registerUser.bind(this));
+    this.router.post("/login-user", this.loginUser.bind(this));
+
+    // Device password endpoints
+    this.router.post(
+      "/devices/:deviceId/password/temp",
+      this.generateTempPassword.bind(this)
+    );
+    this.router.post(
+      "/devices/:deviceId/password",
+      this.setPermanentPassword.bind(this)
+    );
   }
 
   /**
@@ -137,16 +194,23 @@ export class AuthenticationController {
         config.security.deviceTokenLength
       );
 
+      // Normalize device type to valid Prisma enum value
+      const normalizedDeviceType = this.normalizeDeviceType(
+        deviceData.deviceType
+      );
+
       // Store device in database
       const device = await this.dbService.createDevice({
         id: deviceData.deviceId,
         name: deviceData.deviceName,
-        type: deviceData.deviceType,
+        type: normalizedDeviceType,
         platform: deviceData.platform,
         publicKey: deviceData.publicKey,
         passwordHash: hashedPassword,
         deviceToken: deviceToken,
         isActive: true,
+        userId: null, // Device registration without user association
+        metadata: null, // No additional metadata for now
       });
 
       this.logger.info("Device registered successfully", {
@@ -179,6 +243,8 @@ export class AuthenticationController {
     next: NextFunction
   ): Promise<void> {
     try {
+      this.logger.debug("Login attempt started", { body: req.body });
+
       // Validate request
       const { error, value } = this.loginSchema.validate(req.body);
       if (error) {
@@ -186,12 +252,24 @@ export class AuthenticationController {
       }
 
       const loginData: LoginRequest = value;
+      this.logger.debug("Login data validated", {
+        deviceId: loginData.deviceId,
+      });
 
       // Check rate limiting
       await this.checkRateLimit(loginData.deviceId);
+      this.logger.debug("Rate limit check passed", {
+        deviceId: loginData.deviceId,
+      });
 
       // Get device from database
       const device = await this.dbService.getDevice(loginData.deviceId);
+      this.logger.debug("Device lookup result", {
+        deviceId: loginData.deviceId,
+        found: !!device,
+        isActive: device?.isActive,
+      });
+
       if (!device || !device.isActive) {
         await this.recordFailedAttempt(loginData.deviceId);
         throw new AuthenticationError("Invalid credentials");
@@ -200,12 +278,19 @@ export class AuthenticationController {
       // Verify authentication method
       let isAuthenticated = false;
 
-      if (loginData.password && device.passwordHash) {
-        // Password-based authentication
-        isAuthenticated = await bcrypt.compare(
-          loginData.password,
-          device.passwordHash
+      if (loginData.password) {
+        this.logger.debug("Validating password credentials", {
+          deviceId: loginData.deviceId,
+        });
+        // Password-based authentication (temporary or permanent)
+        isAuthenticated = await this.dbService.validateDeviceCredential(
+          loginData.deviceId,
+          loginData.password
         );
+        this.logger.debug("Password validation result", {
+          deviceId: loginData.deviceId,
+          isAuthenticated,
+        });
       } else if (loginData.privateKey && loginData.challenge) {
         // Cryptographic authentication (simplified for now)
         // TODO: Implement proper challenge verification
@@ -222,11 +307,16 @@ export class AuthenticationController {
         throw new AuthenticationError("Invalid credentials");
       }
 
+      this.logger.debug("Authentication successful, generating tokens", {
+        deviceId: loginData.deviceId,
+      });
+
       // Clear failed attempts on successful login
       await this.clearFailedAttempts(loginData.deviceId);
 
       // Generate tokens
       const tokens = await this.generateTokens(device);
+      this.logger.debug("Tokens generated", { deviceId: loginData.deviceId });
 
       // Update last login time
       await this.dbService.updateDeviceLastLogin(device.id);
@@ -254,6 +344,10 @@ export class AuthenticationController {
         },
       });
     } catch (error) {
+      this.logger.error("Login error", {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       next(error);
     }
   }
@@ -402,7 +496,7 @@ export class AuthenticationController {
       const { deviceId } = req.params;
 
       // Validate device ID
-      if (!deviceId || !this.isValidUUID(deviceId)) {
+      if (!deviceId || !this.isValidDeviceId(deviceId)) {
         throw new ValidationError("Invalid device ID");
       }
 
@@ -420,6 +514,202 @@ export class AuthenticationController {
         success: true,
         data: { challenge },
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Register a new user
+   */
+  public async registerUser(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      // Validate request
+      const { error, value } = this.userRegisterSchema.validate(req.body);
+      if (error) {
+        throw new ValidationError(
+          "Invalid user registration data",
+          error.details
+        );
+      }
+
+      const { email, password, firstName, lastName } = value;
+
+      // Check if user already exists
+      const existingUser = await this.dbService.getUserByEmail(email);
+      if (existingUser) {
+        throw new ConflictError("User with this email already exists");
+      }
+
+      // Hash password
+      const passwordHash = await bcrypt.hash(
+        password,
+        config.security.bcryptRounds
+      );
+
+      // Create user
+      const user = await this.dbService.createUser({
+        email,
+        passwordHash,
+        firstName,
+        lastName,
+      });
+
+      this.logger.info("User registered successfully", {
+        userId: user.id,
+        email: user.email,
+      });
+
+      res.status(201).json({
+        success: true,
+        message: "User registered successfully",
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Login user
+   */
+  public async loginUser(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      // Validate request
+      const { error, value } = this.userLoginSchema.validate(req.body);
+      if (error) {
+        throw new ValidationError("Invalid login data", error.details);
+      }
+
+      const { email, password } = value;
+
+      this.logger.info("Login attempt", {
+        email,
+        passwordLength: password.length,
+      });
+
+      // Get user
+      const user = await this.dbService.getUserByEmail(email);
+      if (!user) {
+        this.logger.warn("User not found", { email });
+        throw new AuthenticationError("Invalid email or password");
+      }
+
+      this.logger.info("User found", {
+        userId: user.id,
+        email: user.email,
+        hasPasswordHash: !!user.passwordHash,
+        passwordHashLength: user.passwordHash?.length,
+      });
+
+      // Verify password
+      const isValidPassword = await bcrypt.compare(password, user.passwordHash);
+      this.logger.info("Password verification", { isValidPassword });
+
+      if (!isValidPassword) {
+        this.logger.warn("Invalid password", { email });
+        throw new AuthenticationError("Invalid email or password");
+      }
+
+      // Generate tokens
+      const accessTokenPayload = { userId: user.id, email: user.email };
+      const refreshTokenPayload = { userId: user.id };
+
+      const accessTokenOptions = {
+        expiresIn: config.jwt.accessTokenExpiry,
+      } as any;
+      const refreshTokenOptions = {
+        expiresIn: config.jwt.refreshTokenExpiry,
+      } as any;
+
+      const accessToken = jwt.sign(
+        accessTokenPayload,
+        config.jwt.accessTokenSecret as string,
+        accessTokenOptions
+      );
+
+      const refreshToken = jwt.sign(
+        refreshTokenPayload,
+        config.jwt.refreshTokenSecret as string,
+        refreshTokenOptions
+      );
+
+      // Update last login
+      await this.dbService.updateUserLastLogin(user.id);
+
+      this.logger.info("User logged in successfully", {
+        userId: user.id,
+        email: user.email,
+      });
+
+      res.json({
+        success: true,
+        message: "Login successful",
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+        },
+        accessToken,
+        refreshToken,
+        expiresIn: config.jwt.accessTokenExpiry,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Generate a temporary password for a device (10-minute validity)
+   */
+  private async generateTempPassword(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const { deviceId } = req.params;
+      const { token, expiresAt } =
+        await this.dbService.generateTemporaryCredential(deviceId);
+      res.json({ success: true, token, expiresAt });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Set a permanent password for a device
+   */
+  private async setPermanentPassword(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const { deviceId } = req.params;
+      const bodySchema = Joi.object({
+        password: Joi.string().min(8).max(128).required(),
+      });
+      const { error, value } = bodySchema.validate(req.body);
+      if (error)
+        throw new ValidationError("Invalid password format", error.details);
+      const { password } = value;
+      await this.dbService.setPermanentCredential(deviceId, password);
+      res.json({ success: true, message: "Permanent password set" });
     } catch (error) {
       next(error);
     }
@@ -486,10 +776,9 @@ export class AuthenticationController {
     return parseInt(amount) * units[unit];
   }
 
-  private isValidUUID(uuid: string): boolean {
-    const uuidRegex =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    return uuidRegex.test(uuid);
+  private isValidDeviceId(deviceId: string): boolean {
+    const deviceIdRegex = /^[A-Z0-9]{10}$/;
+    return deviceIdRegex.test(deviceId);
   }
 
   public getRouter(): Router {

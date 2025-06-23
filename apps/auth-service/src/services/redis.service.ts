@@ -4,30 +4,49 @@ import { config } from "../config/config";
 
 /**
  * Redis service for EKD Desk Auth Service
- * Handles caching, session storage, and rate limiting
+ * Handles caching, s  public async get(key: string): Promise<string | null> {
+    if (!this.shouldPerformRedisOperation()) {
+      return null;
+    }
+    
+    try {
+      return await this.client.get(key);
+    } catch (error) {
+      this.logger.error("Failed to get key from Redis", error);
+      throw error;
+    }
+  }torage, and rate limiting
  */
 export class RedisService {
   private client: RedisClientType;
   private logger: Logger;
   private isConnected = false;
+  private isDevelopment = false;
+
   constructor() {
     this.logger = Logger.createLogger("RedisService");
+    this.isDevelopment = config.env === "development";
 
     // Create Redis client
     this.client = createClient({
       socket: {
         host: config.redis.host,
         port: config.redis.port,
+        // Disable auto-connect in development
+        connectTimeout: this.isDevelopment ? 1000 : 5000,
+        reconnectStrategy: this.isDevelopment
+          ? false
+          : (retries) => Math.min(retries * 50, 500),
       },
       password: config.redis.password,
       database: config.redis.db,
-      // Note: retryStrategy is handled differently in newer redis client versions
-      // retryDelayOnFailover and maxRetriesPerRequest can be used instead
     });
 
     // Handle Redis events
     this.client.on("error", (err) => {
-      this.logger.error("Redis error", err);
+      if (!this.isDevelopment) {
+        this.logger.error("Redis error", err);
+      }
     });
 
     this.client.on("connect", () => {
@@ -41,7 +60,9 @@ export class RedisService {
     });
 
     this.client.on("reconnecting", () => {
-      this.logger.info("Redis reconnecting");
+      if (!this.isDevelopment) {
+        this.logger.info("Redis reconnecting");
+      }
     });
   }
 
@@ -49,6 +70,11 @@ export class RedisService {
    * Initialize Redis connection
    */
   public async initialize(): Promise<void> {
+    if (this.isDevelopment) {
+      this.logger.info("Skipping Redis initialization in development mode");
+      return;
+    }
+
     try {
       await this.client.connect();
 
@@ -63,6 +89,13 @@ export class RedisService {
   }
 
   /**
+   * Check if Redis operations should be performed
+   */
+  private shouldPerformRedisOperation(): boolean {
+    return !this.isDevelopment && this.isConnected;
+  }
+
+  /**
    * Store refresh token with expiration
    */
   public async storeRefreshToken(
@@ -70,6 +103,10 @@ export class RedisService {
     token: string,
     expiry: string
   ): Promise<void> {
+    if (!this.shouldPerformRedisOperation()) {
+      return;
+    }
+
     try {
       const key = `refresh_token:${deviceId}`;
       const expirySeconds = this.parseExpiryToSeconds(expiry);
@@ -87,6 +124,10 @@ export class RedisService {
    * Get refresh token for device
    */
   public async getRefreshToken(deviceId: string): Promise<string | null> {
+    if (!this.shouldPerformRedisOperation()) {
+      return null;
+    }
+
     try {
       const key = `refresh_token:${deviceId}`;
       const token = await this.client.get(key);
@@ -102,6 +143,10 @@ export class RedisService {
    * Invalidate all refresh tokens for device
    */
   public async invalidateRefreshTokens(deviceId: string): Promise<void> {
+    if (!this.shouldPerformRedisOperation()) {
+      return;
+    }
+
     try {
       const key = `refresh_token:${deviceId}`;
       await this.client.del(key);
@@ -121,6 +166,10 @@ export class RedisService {
     challenge: string,
     ttl: number
   ): Promise<void> {
+    if (!this.shouldPerformRedisOperation()) {
+      return;
+    }
+
     try {
       const key = `challenge:${deviceId}`;
       await this.client.setEx(key, ttl, challenge);
@@ -136,6 +185,10 @@ export class RedisService {
    * Get and remove authentication challenge
    */
   public async getChallenge(deviceId: string): Promise<string | null> {
+    if (!this.shouldPerformRedisOperation()) {
+      return null;
+    }
+
     try {
       const key = `challenge:${deviceId}`;
       const challenge = await this.client.get(key);
@@ -156,6 +209,10 @@ export class RedisService {
    * Add access token to blacklist
    */
   public async blacklistToken(token: string, exp: number): Promise<void> {
+    if (!this.shouldPerformRedisOperation()) {
+      return;
+    }
+
     try {
       const key = `blacklist:${token}`;
       const ttl = exp - Math.floor(Date.now() / 1000);
@@ -174,6 +231,10 @@ export class RedisService {
    * Check if token is blacklisted
    */
   public async isTokenBlacklisted(token: string): Promise<boolean> {
+    if (!this.shouldPerformRedisOperation()) {
+      return false; // Fail safe - don't block if Redis is not available
+    }
+
     try {
       const key = `blacklist:${token}`;
       const exists = await this.client.exists(key);
@@ -189,6 +250,10 @@ export class RedisService {
    * Generic get method
    */
   public async get(key: string): Promise<string | null> {
+    if (!this.shouldPerformRedisOperation()) {
+      return null;
+    }
+
     try {
       return await this.client.get(key);
     } catch (error) {
@@ -201,6 +266,10 @@ export class RedisService {
    * Generic set method
    */
   public async set(key: string, value: string): Promise<void> {
+    if (!this.shouldPerformRedisOperation()) {
+      return;
+    }
+
     try {
       await this.client.set(key, value);
     } catch (error) {
@@ -217,6 +286,10 @@ export class RedisService {
     value: string,
     ttl: number
   ): Promise<void> {
+    if (!this.shouldPerformRedisOperation()) {
+      return;
+    }
+
     try {
       await this.client.setEx(key, ttl, value);
     } catch (error) {
@@ -229,6 +302,10 @@ export class RedisService {
    * Delete key
    */
   public async delete(key: string): Promise<number> {
+    if (!this.shouldPerformRedisOperation()) {
+      return 0;
+    }
+
     try {
       return await this.client.del(key);
     } catch (error) {
@@ -241,6 +318,10 @@ export class RedisService {
    * Increment counter
    */
   public async increment(key: string): Promise<number> {
+    if (!this.shouldPerformRedisOperation()) {
+      return 0;
+    }
+
     try {
       return await this.client.incr(key);
     } catch (error) {

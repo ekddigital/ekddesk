@@ -131,7 +131,7 @@ class EKDDeskApp {
     // Load the renderer
     const isDev = process.env.NODE_ENV === "development";
     const url = isDev
-      ? "http://localhost:8080"
+      ? `file://${join(__dirname, "index.html")}`
       : `file://${join(__dirname, "index.html")}`;
 
     this.logger.info(`Loading URL: ${url}`);
@@ -152,22 +152,31 @@ class EKDDeskApp {
 
     this.mainWindow.webContents.on("did-finish-load", () => {
       this.logger.info("Main window finished loading");
-      // Open DevTools in development or for debugging
-      if (
-        process.env.NODE_ENV === "development" ||
-        process.env.DEBUG_ELECTRON
-      ) {
-        this.mainWindow?.webContents.openDevTools();
-      }
+      // Always open DevTools for debugging
+      this.mainWindow?.webContents.openDevTools();
     });
+
+    // Log any console errors from the renderer process
+    this.mainWindow.webContents.on(
+      "console-message",
+      (event, level, message, line, sourceId) => {
+        if (level >= 2) {
+          // Error level
+          this.logger.error(
+            `Renderer console error: ${message} (${sourceId}:${line})`
+          );
+        } else {
+          this.logger.info(`Renderer console: ${message}`);
+        }
+      }
+    );
 
     // Show when ready
     this.mainWindow.once("ready-to-show", () => {
       this.mainWindow?.show();
 
-      if (isDev) {
-        this.mainWindow?.webContents.openDevTools();
-      }
+      // Always open DevTools for debugging
+      this.mainWindow?.webContents.openDevTools();
     });
 
     // Handle window events

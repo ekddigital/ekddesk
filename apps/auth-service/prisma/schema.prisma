@@ -1,0 +1,165 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+enum CredentialType {
+    TEMPORARY
+    PERMANENT
+}
+
+enum UserRole {
+    USER
+    ADMIN
+    SUPER_ADMIN
+}
+
+enum DeviceType {
+    DESKTOP
+    MOBILE
+    WEB
+}
+
+enum SessionStatus {
+    ACTIVE
+    EXPIRED
+    REVOKED
+}
+
+// Users table for user accounts
+model User {
+    id            String    @id @default(cuid())
+    email         String    @unique
+    username      String?   @unique
+    passwordHash  String    @map("password_hash")
+    firstName     String?   @map("first_name")
+    lastName      String?   @map("last_name")
+    role          UserRole  @default(USER)
+    isActive      Boolean   @default(true) @map("is_active")
+    emailVerified Boolean   @default(false) @map("email_verified")
+    lastLoginAt   DateTime? @map("last_login_at")
+    createdAt     DateTime  @default(now()) @map("created_at")
+    updatedAt     DateTime  @updatedAt @map("updated_at")
+
+    // Relations
+    devices  Device[]
+    sessions Session[]
+
+    @@map("users")
+}
+
+// Devices table for registered devices
+model Device {
+    id           String     @id @db.VarChar(10)
+    userId       String?    @map("user_id") // Optional - devices can exist without users
+    name         String
+    type         DeviceType
+    platform     String
+    publicKey    String     @map("public_key")
+    passwordHash String?    @map("password_hash") // Device-specific password
+    deviceToken  String     @unique @map("device_token")
+    isActive     Boolean    @default(true) @map("is_active")
+    metadata     String? // JSON metadata
+    registeredAt DateTime   @default(now()) @map("registered_at")
+    lastLoginAt  DateTime?  @map("last_login_at")
+
+    // Relations
+    user        User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+    credentials DeviceCredential[]
+    sessions    Session[]
+
+    @@index([userId])
+    @@index([deviceToken])
+    @@index([isActive])
+    @@map("devices")
+}
+
+// Device credentials for temporary/permanent passwords
+model DeviceCredential {
+    id           String         @id @default(cuid())
+    deviceId     String         @map("device_id") @db.VarChar(10)
+    passwordHash String         @map("password_hash")
+    type         CredentialType @default(TEMPORARY)
+    expiresAt    DateTime?      @map("expires_at")
+    createdAt    DateTime       @default(now()) @map("created_at")
+    updatedAt    DateTime       @updatedAt @map("updated_at")
+
+    // Relations
+    device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+    @@unique([deviceId, type], name: "device_credential_unique")
+    @@index([deviceId])
+    @@index([expiresAt])
+    @@index([type])
+    @@map("device_credentials")
+}
+
+// User and device sessions
+model Session {
+    id               String        @id @default(cuid())
+    userId           String?       @map("user_id")
+    deviceId         String        @map("device_id") @db.VarChar(10)
+    accessTokenHash  String        @map("access_token_hash")
+    refreshTokenHash String        @map("refresh_token_hash")
+    status           SessionStatus @default(ACTIVE)
+    expiresAt        DateTime      @map("expires_at")
+    createdAt        DateTime      @default(now()) @map("created_at")
+    lastActivityAt   DateTime      @default(now()) @map("last_activity_at")
+    ipAddress        String?       @map("ip_address")
+    userAgent        String?       @map("user_agent")
+    metadata         String? // JSON metadata
+
+    // Relations
+    user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+    device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+    @@index([userId])
+    @@index([deviceId])
+    @@index([status])
+    @@index([expiresAt])
+    @@index([accessTokenHash])
+    @@index([refreshTokenHash])
+    @@map("sessions")
+}
+
+// Audit logs for security tracking
+model AuditLog {
+    id        String   @id @default(cuid())
+    userId    String?  @map("user_id")
+    deviceId  String?  @map("device_id") @db.VarChar(10)
+    action    String // e.g., "login", "logout", "register", "password_change"
+    status    String // e.g., "success", "failure", "warning"
+    details   String? // JSON details
+    ipAddress String?  @map("ip_address")
+    userAgent String?  @map("user_agent")
+    timestamp DateTime @default(now())
+
+    @@index([userId])
+    @@index([deviceId])
+    @@index([action])
+    @@index([status])
+    @@index([timestamp])
+    @@map("audit_logs")
+}
+
+// API keys for service-to-service communication
+model ApiKey {
+    id          String    @id @default(cuid())
+    name        String // Human-readable name
+    keyHash     String    @unique @map("key_hash")
+    permissions String[] // Array of permissions
+    isActive    Boolean   @default(true) @map("is_active")
+    expiresAt   DateTime? @map("expires_at")
+    lastUsedAt  DateTime? @map("last_used_at")
+    createdAt   DateTime  @default(now()) @map("created_at")
+    createdBy   String?   @map("created_by") // User ID who created this key
+
+    @@index([keyHash])
+    @@index([isActive])
+    @@index([expiresAt])
+    @@map("api_keys")
+}

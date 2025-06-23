@@ -27,6 +27,7 @@ import {
   Menu as MenuIcon,
   Notifications as NotificationsIcon,
   Info as InfoIcon,
+  Logout as LogoutIcon,
 } from "@mui/icons-material";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -35,6 +36,7 @@ import HomeView from "./components/HomeView";
 import HostView from "./components/HostView";
 import ConnectView from "./components/ConnectView";
 import SettingsView from "./components/SettingsView";
+import LoginView from "./components/LoginView";
 import StatusBar from "./components/StatusBar";
 import NotificationCenter from "./components/NotificationCenter";
 import ConnectionStatus from "./components/ConnectionStatus";
@@ -55,15 +57,19 @@ declare global {
   }
 }
 
-type ViewType = "home" | "host" | "connect" | "settings";
+type ViewType = "login" | "home" | "host" | "connect" | "settings";
 
 /**
  * Main App Component for EKD Desk Desktop Client
  * Manages application state, theme, navigation, and real-time updates
  */
 const App: React.FC = () => {
+  // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
   // Application state
-  const [currentView, setCurrentView] = useState<ViewType>("home");
+  const [currentView, setCurrentView] = useState<ViewType>("login");
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>({
     isHosting: false,
@@ -72,6 +78,7 @@ const App: React.FC = () => {
     connectedClients: 0,
   });
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -140,6 +147,24 @@ const App: React.FC = () => {
       try {
         setIsLoading(true);
 
+        // Check for existing authentication
+        const savedUser = localStorage.getItem("user");
+        const savedToken = localStorage.getItem("accessToken");
+
+        if (savedUser && savedToken) {
+          try {
+            const user = JSON.parse(savedUser);
+            setCurrentUser(user);
+            setIsAuthenticated(true);
+            setCurrentView("home");
+          } catch (e) {
+            // Invalid saved data, clear it
+            localStorage.removeItem("user");
+            localStorage.removeItem("accessToken");
+            localStorage.removeItem("refreshToken");
+          }
+        }
+
         // Load settings
         const appSettings = await window.electronAPI.getSettings();
         setSettings(appSettings);
@@ -198,6 +223,46 @@ const App: React.FC = () => {
     }
   };
 
+  // Authentication handlers
+  const handleLoginSuccess = (user: any) => {
+    setCurrentUser(user);
+    setIsAuthenticated(true);
+    setCurrentView("home");
+    setNotifications((prev) =>
+      [
+        {
+          id: Date.now().toString(),
+          type: "success" as const,
+          title: "Login Successful",
+          message: `Welcome back, ${user.firstName}!`,
+          timestamp: Date.now(),
+        },
+        ...prev,
+      ].slice(0, 10)
+    );
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("user");
+    setCurrentUser(null);
+    setIsAuthenticated(false);
+    setCurrentView("login");
+    setNotifications((prev) =>
+      [
+        {
+          id: Date.now().toString(),
+          type: "info" as const,
+          title: "Logged Out",
+          message: "You have been logged out successfully",
+          timestamp: Date.now(),
+        },
+        ...prev,
+      ].slice(0, 10)
+    );
+  };
+
   // Navigation items
   const navigationItems = [
     { id: "home", label: "Home", icon: ComputerIcon },
@@ -208,6 +273,11 @@ const App: React.FC = () => {
 
   // Render current view
   const renderCurrentView = () => {
+    // If not authenticated, always show login view
+    if (!isAuthenticated) {
+      return <LoginView onLoginSuccess={handleLoginSuccess} />;
+    }
+
     switch (currentView) {
       case "home":
         return (
@@ -222,12 +292,7 @@ const App: React.FC = () => {
           <HostView onBack={() => setCurrentView("home")} settings={settings} />
         );
       case "connect":
-        return (
-          <ConnectView
-            onBack={() => setCurrentView("home")}
-            settings={settings}
-          />
-        );
+        return <ConnectView onBack={() => setCurrentView("home")} />;
       case "settings":
         return (
           <SettingsView
@@ -237,7 +302,13 @@ const App: React.FC = () => {
           />
         );
       default:
-        return null;
+        return (
+          <HomeView
+            onStartHosting={() => setCurrentView("host")}
+            onConnect={() => setCurrentView("connect")}
+            connectionState={connectionState}
+          />
+        );
     }
   };
 
@@ -276,27 +347,49 @@ const App: React.FC = () => {
           }}
         >
           <Toolbar sx={{ minHeight: "40px !important", px: 1 }}>
-            <IconButton
-              size="small"
-              onClick={() => setDrawerOpen(true)}
-              sx={{ WebkitAppRegion: "no-drag" }}
-            >
-              <MenuIcon />
-            </IconButton>
+            {isAuthenticated && (
+              <IconButton
+                size="small"
+                onClick={() => setDrawerOpen(true)}
+                sx={{ WebkitAppRegion: "no-drag" }}
+              >
+                <MenuIcon />
+              </IconButton>
+            )}
 
             <Typography variant="h6" sx={{ ml: 1, flex: 1, fontSize: "14px" }}>
               EKD Desk
             </Typography>
 
-            <ConnectionStatus connectionState={connectionState} />
+            {isAuthenticated && (
+              <>
+                <ConnectionStatus connectionState={connectionState} />
 
-            <Tooltip title="Notifications">
-              <IconButton size="small" sx={{ WebkitAppRegion: "no-drag" }}>
-                <Badge badgeContent={notifications.length} color="error">
-                  <NotificationsIcon fontSize="small" />
-                </Badge>
-              </IconButton>
-            </Tooltip>
+                <Tooltip title="Notifications">
+                  <IconButton
+                    size="small"
+                    onClick={() =>
+                      setNotificationPanelOpen(!notificationPanelOpen)
+                    }
+                    sx={{ WebkitAppRegion: "no-drag" }}
+                  >
+                    <Badge badgeContent={notifications.length} color="error">
+                      <NotificationsIcon fontSize="small" />
+                    </Badge>
+                  </IconButton>
+                </Tooltip>
+
+                <Tooltip title="Logout">
+                  <IconButton
+                    size="small"
+                    onClick={handleLogout}
+                    sx={{ WebkitAppRegion: "no-drag", ml: 1 }}
+                  >
+                    <LogoutIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
 
             <Box sx={{ ml: 1, WebkitAppRegion: "no-drag" }}>
               <IconButton size="small" onClick={window.electronAPI.minimizeApp}>
@@ -312,34 +405,36 @@ const App: React.FC = () => {
           </Toolbar>
         </AppBar>
 
-        {/* Navigation Drawer */}
-        <Drawer
-          anchor="left"
-          open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          PaperProps={{
-            sx: { width: 240 },
-          }}
-        >
-          <List>
-            {navigationItems.map((item) => (
-              <ListItem
-                key={item.id}
-                button
-                selected={currentView === item.id}
-                onClick={() => {
-                  setCurrentView(item.id as ViewType);
-                  setDrawerOpen(false);
-                }}
-              >
-                <ListItemIcon>
-                  <item.icon />
-                </ListItemIcon>
-                <ListItemText primary={item.label} />
-              </ListItem>
-            ))}
-          </List>
-        </Drawer>
+        {/* Navigation Drawer - Only show when authenticated */}
+        {isAuthenticated && (
+          <Drawer
+            anchor="left"
+            open={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            PaperProps={{
+              sx: { width: 240 },
+            }}
+          >
+            <List>
+              {navigationItems.map((item) => (
+                <ListItem
+                  key={item.id}
+                  button
+                  selected={currentView === item.id}
+                  onClick={() => {
+                    setCurrentView(item.id as ViewType);
+                    setDrawerOpen(false);
+                  }}
+                >
+                  <ListItemIcon>
+                    <item.icon />
+                  </ListItemIcon>
+                  <ListItemText primary={item.label} />
+                </ListItem>
+              ))}
+            </List>
+          </Drawer>
+        )}
 
         {/* Main Content */}
         <Box component="main" sx={{ flex: 1, overflow: "auto", minHeight: 0 }}>
@@ -357,12 +452,14 @@ const App: React.FC = () => {
           </AnimatePresence>
         </Box>
 
-        {/* Status Bar */}
-        <StatusBar connectionState={connectionState} />
+        {/* Status Bar - Only show when authenticated */}
+        {isAuthenticated && <StatusBar connectionState={connectionState} />}
 
         {/* Notification Center */}
         <NotificationCenter
           notifications={notifications}
+          open={notificationPanelOpen}
+          onClose={() => setNotificationPanelOpen(false)}
           onDismiss={(index: number) => {
             setNotifications((prev) => prev.filter((_, i) => i !== index));
           }}

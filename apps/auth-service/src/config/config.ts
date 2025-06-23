@@ -33,13 +33,21 @@ export const config = {
   },
 
   database: {
-    host: process.env.DB_HOST || "localhost",
-    port: parseInt(process.env.DB_PORT || "5432"),
-    name: process.env.DB_NAME || "ekd_desk_auth",
-    username: process.env.DB_USERNAME || "postgres",
-    password: process.env.DB_PASSWORD || "password",
-    ssl: process.env.DB_SSL === "true",
-    maxConnections: parseInt(process.env.DB_MAX_CONNECTIONS || "10"),
+    // If DATABASE_URL is defined, use it, otherwise use individual components
+    url: process.env.DATABASE_URL || undefined,
+    host: process.env.DATABASE_HOST || process.env.DB_HOST || "localhost",
+    port: parseInt(process.env.DATABASE_PORT || process.env.DB_PORT || "5432"),
+    name: process.env.DATABASE_NAME || process.env.DB_NAME || "ekd_desk_auth",
+    username:
+      process.env.DATABASE_USER || process.env.DB_USERNAME || "postgres",
+    password:
+      process.env.DATABASE_PASSWORD || process.env.DB_PASSWORD || "password",
+    ssl: process.env.DATABASE_SSL === "true" || process.env.DB_SSL === "true",
+    maxConnections: parseInt(
+      process.env.DATABASE_MAX_CONNECTIONS ||
+        process.env.DB_MAX_CONNECTIONS ||
+        "10"
+    ),
   },
 
   redis: {
@@ -96,5 +104,9 @@ export const config = {
     maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS || "5"),
     sessionTimeout: parseInt(process.env.SESSION_TIMEOUT || "3600000"), // 1 hour
     cleanupInterval: parseInt(process.env.SESSION_CLEANUP_INTERVAL || "300000"), // 5 minutes
+    credentialCleanupInterval: parseInt(
+      process.env.CREDENTIAL_CLEANUP_INTERVAL || "600000"
+    ), // 10 minutes
+    tempPasswordLength: parseInt(process.env.TEMP_PASSWORD_LENGTH || "16"),
   },
 };

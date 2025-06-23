@@ -4,10 +4,25 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 module.exports = {
     mode: 'development',
     entry: './src/renderer.tsx',
-    target: 'electron-renderer',
+    target: 'web',
     output: {
         path: path.resolve(__dirname, 'dist'),
         filename: 'renderer.js',
+        libraryTarget: 'umd',
+        globalObject: 'this',
+    },
+    resolve: {
+        extensions: ['.tsx', '.ts', '.js'],
+        fallback: {
+            "events": false,
+            "stream": false,
+            "util": false,
+            "buffer": false,
+            "crypto": false,
+            "fs": false,
+            "path": false,
+            "os": false
+        }
     },
     module: {
         rules: [
@@ -21,9 +36,6 @@ module.exports = {
                 use: ['style-loader', 'css-loader'],
             },
         ],
-    },
-    resolve: {
-        extensions: ['.tsx', '.ts', '.js'],
     },
     plugins: [
         new HtmlWebpackPlugin({
